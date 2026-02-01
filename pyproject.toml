@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools >= 77.0.3"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mtgpy"
+version = "0.0.0"
+dependencies = []
+
+requires-python=""
+authors=[{name="Bennett Garza", email="garza.ben.g@gmail.com"}]
+description="A MTG rules engine in Python"
+readme="README.md"
+
+[project.optional-dependencies]
+
+[project.urls]
+

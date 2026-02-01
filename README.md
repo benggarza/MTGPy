@@ -1,0 +1,1 @@
+# MTGPy: A Magic the Gathering rules engine in Python
