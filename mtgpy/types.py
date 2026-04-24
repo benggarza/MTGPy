@@ -28,3 +28,7 @@ class SuperType:
 
 class Legendary(SuperType):
     pass
+
+class Permanent:
+    player_owner = None
+    player_controller = None

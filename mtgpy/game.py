@@ -27,8 +27,8 @@ class Step(Enum):
     begin_combat = 'begin_combat'
     declare_attackers = 'declare_attackers'
     declare_blockers = 'declare_blockers'
-    combat_damage_fs = 'combat_damage_fs'
     combat_damage = 'combat_damage'
+    combat_damage_nofs = 'combat_damage_nofs'
     end_combat = 'end_combat'
     end = 'end'
     cleanup = 'cleanup'
@@ -57,11 +57,11 @@ STEPS = {
         Step.begin_combat,
         Step.declare_attackers,
         Step.declare_blockers,
-        Step.combat_damage_fs,
         Step.combat_damage,
         Step.end_combat
     ],
     Phase.postcombat_main: [Step.no_step],
+    # CR512.1. The ending phase consists of two steps: end and cleanup.
     Phase.ending: [Step.end, Step.cleanup]
 }
 STEP_PHASES = {
@@ -72,6 +72,7 @@ STEP_PHASES = {
     Step.declare_attackers: Phase.combat,
     Step.declare_blockers: Phase.combat,
     Step.combat_damage: Phase.combat,
+    Step.combat_damage_nofs: Phase.combat,
     Step.end_combat: Phase.combat,
     Step.end: Phase.ending,
     Step.cleanup: Phase.ending
@@ -106,6 +107,11 @@ class Game:
 
         self.step : Step = None
         self.phase : Phase = None
+        
+        # Fields used to track the normal steps/phases/turns outside of extra steps/phases/turns
+        self.nonextra_step : Step = None
+        self.nonextra_phase : Step = None
+        self.nonextra_turn : Player = None
 
         self.extra_turns : list[Player] = []
 
@@ -309,7 +315,37 @@ class Game:
                     self.execute_declare_attackers()
 
                 if self.step == Step.declare_blockers:
+                    # CR509.1. First, the defending player declares blockers.
+                    # This turn-based action doesn’t use the stack.
                     self.execute_declare_blockers()
+
+                if self.step == Step.combat_damage:
+                    # CR510.4. If at least one attacking or blocking creature has first strike (see rule 702.7)
+                    # or double strike (see rule 702.4) as the combat damage step begins,
+                    # the only creatures that assign combat damage in that step are those with first strike or double strike.
+                    # After that step, instead of proceeding to the end of combat step,
+                    # the phase gets a second combat damage step.
+                    # The only creatures that assign combat damage in that step are the remaining attackers and blockers
+                    # that had neither first strike nor double strike as the first combat damage step began,
+                    # as well as the remaining attackers and blockers that currently have double strike.
+                    # After that step, the phase proceeds to the end of combat step.
+                    x_strike_creatures = [attacker for attacker in self.attacking_creatures.keys() if 
+                                          'first_strike' in attacker.abilities or 'double_strike' in attacker.abilities] + \
+                                         [blocker for blocker in self.blocking_creatures.keys() if 
+                                          'first_strike' in blocker.abilities or 'double_strike' in blocker.abilities]
+                    first_strike_step = len(x_strike_creatures) > 0
+                    if first_strike_step:
+                        self.extra_steps[Phase.combat][Step.combat_damage].append(Step.combat_damage_nofs)
+
+                    # CR510.1. First, the active player announces how each attacking creature assigns its combat damage,
+                    # then the defending player announces how each blocking creature assigns its combat damage.
+                    # This turn-based action doesn’t use the stack.
+                    damage_assignments = self.assign_combat_damage(first_strike=first_strike_step)
+
+                if self.step == Step.combat_damage_nofs:
+                    # CR510.1
+                    damage_assignments = self.assign_combat_damage()
+
 
                 # Place triggered abilities onto the stack in APNAP order
                 # CR503.1a, CR504.2
@@ -327,7 +363,8 @@ class Game:
                 # handled once we go over CR603
 
 
-                # CR503.1, CR504.2, CR505.6, CR507.2, CR508.2. ...the active player gets priority
+                # CR503.1, CR504.2, CR505.6, CR507.2, CR508.2, CR509.2, CR511.1, 513.1
+                # ...the active player gets priority
                 while True: 
                     pass_in_succession = True
 
@@ -360,12 +397,29 @@ class Game:
             for player in self.players:
                 player.empty_mana_pool()
 
+            # CR511.3. As soon as the end of combat step ends, all creatures, battles, and planeswalkers are removed from combat.
+            # After the end of combat step ends, the combat phase is over and the postcombat main phase begins (see rule 505).
+            if self.step == Step.end_combat:
+                self.attacking_player = None
+                self.defending_players = []
+                self.attacking_creatures.clear()
+                self.blocking_creatures.clear()
+
             # Determine the next turn, phase, and step
-            self.step, self.phase, self.active_player = self.next_step()
+            next_step, next_phase, next_turn, extra = self.next_step()
+            if not extra:
+                # only update the nonextra step/phase/turn if were are not entering an extra step/phase/turn
+                self.step = self.nonextra_step = next_step
+                self.phase = self.nonextra_phase = next_phase
+                self.active_player = self.nonextra_turn = next_turn
+            else:
+                self.step = next_step
+                self.phase = next_phase
+                self.active_player = next_turn
 
             # CR500.12. No game events can occur between steps, phases, or turns.
                      
-    def next_step(self) -> tuple[Step, Phase, Player]:
+    def next_step(self) -> tuple[Step, Phase, Player, bool]:
         """Determine the next step, phase and turn according to:
         normal turn structure,
         extra steps/phases/turns,
@@ -378,6 +432,8 @@ class Game:
         next_step = None
         next_phase = self.phase
         next_turn = self.active_player
+
+        extra = False
 
         skip = False
         while skip:
@@ -397,6 +453,7 @@ class Game:
                 # Any other steps that phase would normally have are skipped
                 # (see rule 500.11).
                 next_phase = STEP_PHASES.get(next_step, next_phase)
+                extra = True
             else:
                 step_idx += 1
                 # If it is the last step of the phase, move to the
@@ -424,6 +481,7 @@ class Game:
                         next_phase = PHASES[phase_idx]
                     step_idx = 0
                 next_step = STEPS[next_phase][step_idx]
+                extra = False
 
             # CR500.11. Some effects can cause a step, phase, or turn
             # to be skipped.
@@ -434,12 +492,14 @@ class Game:
                 next_turn in self.skip_turns:
                 skip = True
 
-        return next_step, next_phase, next_turn
+        return next_step, next_phase, next_turn, extra
 
     def execute_untap_step(self) -> None:
         """As one of two steps without priority, 
         the untap step only executes a few defined actions.
         CR502"""
+        if self.step != Step.untap:
+            raise RuntimeError("Untap step actions can only be made in the untap step")
         # TODO: CR502.1. First, all phased-in permanents
         # with phasing that the active player controls phase out,
         # and all phased-out permanents
@@ -464,11 +524,39 @@ class Game:
 
         # check if any triggers are slated for untap step and move them to upkeep step
 
-    def execute_cleanup_step(self) -> None:
-        pass
+    def execute_cleanup_step(self) -> bool:
+        """CR514"""
+        # TODO: CR514.1. First, if the active player’s hand contains more cards than their maximum hand size
+        # (normally seven), they discard enough cards to reduce their hand size to that number.
+        # This turn-based action doesn’t use the stack.
+        if self.active_player.hand_size > self.active_player.maximum_hand_size:
+            self.active_player.discard(self.active_player.hand_size - self.active_player.maximum_hand_size)
+
+        # TODO: CR514.2. Second, the following actions happen simultaneously:
+        # all damage marked on permanents (including phased-out permanents) is removed
+        # and all “until end of turn” and “this turn” effects end. This turn-based action doesn’t use the stack.
+        
+        # TODO: remove marked damage from all permanents
+
+        # CR514.3. Normally, no player receives priority during the cleanup step,
+        # so no spells can be cast and no abilities can be activated.
+        # However, this rule is subject to the following exception:
+
+        # CR514.3a At this point, the game checks to see if any state-based actions
+        # would be performed and/or any triggered abilities are waiting to be put onto the stack
+        # (including those that trigger “at the beginning of the next cleanup step”).
+        # If so, those state-based actions are performed, then those triggered abilities are put on the stack,
+        # then the active player gets priority.
+        # Players may cast spells and activate abilities.
+        # Once the stack is empty and all players pass in succession, another cleanup step begins.
+        # TODO: check SBA and triggered abilities to see if players get priority in this step.
+        # If so, add an extra cleanup step after the current one
+
 
     def execute_declare_attackers(self) -> list[tuple[Creature, Player | Planeswalker | Battle]]:
         """The active player declares attackers"""
+        if self.step != Step.declare_attackers:
+            raise RuntimeError("Declaring attackers can only be made in the declare attackers step")
         # CR508.1a The active player chooses which creatures that they control, if any, will attack.
         # The chosen creatures must be untapped, they can’t also be battles,
         # and each one must either have haste or have been controlled by the active player continuously
@@ -512,15 +600,186 @@ class Game:
         # CR508.1j Once the player has enough mana in their mana pool,
         # they pay all costs in any order. Partial payments are not allowed.
 
-        # CR508.1k Each chosen creature still controlled by the active player becomes an attacking creature.
-        # It remains an attacking creature until it’s removed from combat or the combat phase ends, whichever comes first. See rule 506.4.
-
-        # CR508.1m Any abilities that trigger on attackers being declared trigger.
+        
 
 
         attackers : list[tuple[Creature, Player | Planeswalker | Battle]] = \
             self.active_player.declare_attackers()
         
+        # CR508.1k Each chosen creature still controlled by the active player becomes an attacking creature.
+        # It remains an attacking creature until it’s removed from combat or the combat phase ends, whichever comes first. See rule 506.4.
+        for (creature, defender) in attackers:
+            if creature not in self.attacking_creatures.keys():
+                self.attacking_creatures[creature] = defender
+
+        # CR508.1m Any abilities that trigger on attackers being declared trigger.
+        
 
         # TODO: verify valid attackers
         return attackers
+
+    def execute_declare_blockers(self) -> list[tuple[Creature, list[Creature]]]:
+        """The defending players declare blockers"""
+        if self.step != Step.declare_blockers:
+            raise RuntimeError("Declaring blockers can only be made in the declare blockers step")
+
+        # CR509.1a The defending player chooses which creatures they control, if any, will block.
+        # The chosen creatures must be untapped and they can’t also be battles.
+        # For each of the chosen creatures,
+        # the defending player chooses one creature for it to block that’s attacking that player,
+        # a planeswalker they control, or a battle they protect.
+
+        # CR509.1b The defending player checks each creature they control to see
+        # whether it’s affected by any restrictions (effects that say a creature can’t block,
+        # or that it can’t block unless some condition is met).
+        # If any restrictions are being disobeyed, the declaration of blockers is illegal.
+        # A restriction may be created by an evasion ability
+        # (a static ability an attacking creature has that restricts what can block it).
+        # If an attacking creature gains or loses an evasion ability after a legal block has been declared,
+        # it doesn’t affect that block. Different evasion abilities are cumulative.
+
+        # CR509.1c The defending player checks each creature they control to see
+        # whether it’s affected by any requirements
+        # (effects that say a creature must block,
+        # or that it must block if some condition is met).
+        # If the number of requirements that are being obeyed is fewer than
+        # the maximum possible number of requirements that could be obeyed
+        # without disobeying any restrictions, the declaration of blockers is illegal.
+
+        # CR509.1d If any of the chosen creatures require paying costs to block,
+        # the defending player determines the total cost to block.
+        # Costs may include paying mana, tapping permanents, sacrificing permanents,
+        # discarding cards, and so on.
+
+        # CR509.1e If any of the costs require mana,
+        # the defending player then has a chance to activate mana abilities
+        # (see rule 605, “Mana Abilities”).
+
+        # CR509.1f Once the player has enough mana in their mana pool,
+        # they pay all costs in any order. Partial payments are not allowed.
+
+        # TODO: is a list the most appropriate data structure for this? or a set?
+        blockers : list[tuple[Creature, list[Creature]]] = []
+        for p in self.defending_players:
+            p_blockers : list[tuple[Creature, list[Creature]]] = \
+                p.declare_blockers()
+            blockers.append(p_blockers)
+
+        # CR509.1g Each chosen creature still controlled by the defending player becomes a blocking creature.
+        # Each one is blocking the attacking creatures chosen for it.
+        # It remains a blocking creature until it’s removed from combat or the combat phase ends,
+        # whichever comes first. See rule 506.4.
+        for (creature, blockees) in blockers:
+            if creature not in self.blocking_creatures.keys():
+                self.blocking_creatures[creature] = blockees
+
+        # CR509.1i Any abilities that trigger on blockers being declared trigger.
+        # See rule 509.2a for more information.
+
+        return blockers
+    
+    def assign_combat_damage(self, first_strike = False) -> tuple[object]:
+        if self.step != Step.combat_damage and self.step != Step.combat_damage_fs:
+            raise RuntimeError("Assigning combat damage can only be made in a combat step")
+        
+        damage_assignments : dict[Creature, dict[Creature | Player | Planeswalker | Battle, int]] = {}
+        
+        # if we are in a first strike combat damage step, only creatures with first strike or double strike assign damage
+        # if we are not, then only creatures without first strike or with double strike assign combat damage
+        active_attackers : dict[Creature, Player | Planeswalker | Battle] = {}
+        for attacker, defender in self.attacking_creatures.items():
+            if first_strike:
+                if 'first_strike' in attacker.abilities or 'double_strike' in attacker.abilities:
+                    active_attackers[attacker] = defender
+            else:
+                # first strike attackers do not deal damage in non-fs damage step unless they also have double strike
+                if 'first_strike' not in attacker.abilities or 'double_strike' in attacker.abilities:
+                    active_attackers[attacker] = defender
+
+        active_blockers : dict[Creature, list[Creature]] = {}
+        for blocker, blockees in self.blocking_creatures.items():
+            if first_strike:
+                if 'first_strike' in blocker.abilities or 'double_strike' in blocker.abilities:
+                    active_blockers[blocker] = blockees
+            else:
+                if 'first_strike' not in blocker.abilities or 'double_strike' in blocker.abilities:
+                    active_blockers[blocker] = blockees
+
+        blocked_attackers : dict[Creature, list[Creature]] = {}
+        for blocker, blockees in self.blocking_creatures:
+            for blocked_attacker in blockees:
+                if blocked_attacker in active_attackers.keys():
+                    blocked_attackers.setdefault(blocked_attacker, []).append(blocker)
+        
+        # CR510.1a Each attacking creature and each blocking creature assigns combat damage equal to its power.
+        # Creatures that would assign 0 or less damage this way don’t assign combat damage at all.
+        attackers_with_nonzero_power : dict[Creature, Player | Planeswalker | Battle] = {}
+        for attacker, defender in active_attackers:
+            if attacker.power > 0:
+                attackers_with_nonzero_power[attacker] = defender
+
+        blockers_with_nonzero_power : dict[Creature, list[Creature]] = {}
+        for blocker, blockees in active_blockers:
+            if blocker.power > 0:
+                blockers_with_nonzero_power[blocker] = blockees
+
+        # CR510.1b An unblocked creature assigns its combat damage to
+        # the player, planeswalker, or battle it’s attacking.
+        # If it isn’t currently attacking anything
+        # (if, for example, it was attacking a planeswalker that has left the battlefield),
+        # it assigns no combat damage.
+        for attacker, defender in attackers_with_nonzero_power:
+            if defender is None:
+                continue
+            if attacker not in blocked_attackers.keys():
+                damage_assignments[attacker][defender] = attacker.power
+
+        # CR510.1c A blocked creature assigns its combat damage to the creatures blocking it.
+        # If no creatures are currently blocking it
+        # (if, for example, they were destroyed or removed from combat),
+        # it assigns no combat damage.
+        # If exactly one creature is blocking it,
+        # it assigns all its combat damage to that creature.
+        # If two or more creatures are blocking it,
+        # it assigns its combat damage to those creatures divided
+        # as its controller chooses among them.
+        for attacker, blockers in blocked_attackers:
+            if len(blockers) == 0:
+                # TODO: trample exception
+                continue
+            if len(blockers) == 1:
+                damage_assignments[attacker][blockers[0]] = attacker.power
+            else:
+                damage_assignment : dict[Creature, int] = \
+                    self.active_player.assign_combat_damage(attacker, blockers)
+                damage_assignments[attacker] = damage_assignment
+                
+        # CR510.1d A blocking creature assigns combat damage to the creatures it’s blocking.
+        # If it isn’t currently blocking any creatures
+        # (if, for example, they were destroyed or removed from combat),
+        # it assigns no combat damage.
+        # If it’s blocking exactly one creature,
+        # it assigns all its combat damage to that creature.
+        # If it’s blocking two or more creatures,
+        # it assigns its combat damage divided as its controller chooses among them.
+        for blocker, blockees in blockers_with_nonzero_power:
+            if len(blockees) == 0:
+                continue
+            if len(blockees) == 1:
+                damage_assignments[blocker][blockees[0]] = blocker.power
+            else:
+                damage_assignment : dict[Creature, int] = \
+                    blocker.player_controller.assign_combat_damage(blocker, blockees)
+                damage_assignments[blocker] = damage_assignment
+        
+        # TODO: CR510.1e Once a player has assigned combat damage from each attacking or blocking creature they control,
+        # the total damage assignment
+        # (not solely the damage assignment of any individual attacking or blocking creature)
+        # is checked to see if it complies with the above rules.
+        # If it doesn’t, the combat damage assignment is illegal;
+        # the game returns to the moment before that player began to assign combat damage.
+        # (See rule 732, “Handling Illegal Actions.”)
+
+
+        return damage_assignments
+
