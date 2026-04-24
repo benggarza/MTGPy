@@ -3,6 +3,7 @@ from .interface import Interface
 from .ability import Ability
 from random import choice
 from enum import Enum
+from .format import *
 from .types import *
 
 # CR500.1. A turn consists of five phases, in this order:
@@ -83,7 +84,7 @@ class Game:
     
     """
     
-    def __init__(self, players : list[Player], interface : Interface):
+    def __init__(self, players : list[Player], interface : Interface, format : Format = None, choosing_player : Player = None):
         """Constructor
         
         Keyword arguments:
@@ -91,14 +92,29 @@ class Game:
         """
 
         self.interface : Interface = Interface
-        
-        # TODO: assert that all Players are valid objects
+
+        # CR102.1. A player is one of the people in the game.
+        # The active player is the player whose turn it is.
+        # The other players are nonactive players.
+        for p in players:
+            if not isinstance(p, Player):
+                raise ValueError("All players must be Player objects")
+        if choosing_player and not isinstance(choosing_player, Player):
+            raise ValueError("choosing_player must be a Player object")
+        if choosing_player not in players:
+            raise ValueError("choosing_player must be a participating player in the game (in players)")
         self.num_players : int = len(players)
         self.active_player : Player | None = None
         self.players : list[Player] = players
+        self.choosing_player : Player | None = choosing_player
 
         self.attacking_player : Player | None = None
         self.defending_players : list[Player] = []
+
+        if format and not isinstance(format, Format):
+            raise ValueError("format must be a Format")
+        self.starting_life_total : int = format.starting_life_total if format else 20
+        self.free_mulligan : bool = format.free_mulligan if format else False
 
         # CR506.3. Only a creature can attack or block.
         # Only a player, a planeswalker, or a battle can be attacked.
@@ -160,17 +176,21 @@ class Game:
     def start(self):
         """# CR103. Starting the Game"""
         
-        # CR103.2. At the start of a game,
+        # CR103.1. At the start of a game,
         # the players determine which one of them will choose
         # who takes the first turn.
         # In the first game of a match (including a single-game match),
         # the players may use any mutually agreeable method
         # (flipping a coin, rolling dice, etc.) to do so. 
 
-        # TODO: in matches after G1,
-        # have the losing player (or previous active player for draws), choose.
+        if not self.choosing_player:
+            self.choosing_player = choice(self.players)
+        if self.choosing_player.choose_first():
+            self.active_player = self.choosing_player
+        else:
+            self.active_player = self.players[self.players.index(self.choosing_player) + 1]
 
-        self.active_player = choice(self.players)
+        # CR103.2. Some games require additional steps that are taken after the starting player has been determined. 
        
         # CR103.2b If any players wish to reveal a card with a companion ability
         # that they own from outside the game, they may do so.
@@ -195,14 +215,14 @@ class Game:
 
         
         # CR103.4. Each player begins the game with a starting life total of 20.
-        # TODO: refactor Game to allow for formats with different life totals.
-        # CR103.4a-e
+        # Some variant games have different starting life totals.
         for player in self.players:
-            player.life = 20
+            player.life = self.starting_life_total
 
         # CR103.5. Each player draws a number of cards equal to
         # his or her starting hand size, which is normally seven. 
         mulligan = [True for player in self.players]
+        first_hand = [True for player in self.players]
         hand_size = [7 for player in self.players]
         while any(mulligan):
             for i, player in enumerate(self.players):
@@ -223,9 +243,15 @@ class Game:
             for i, player in enumerate(self.players):
                 if mulligan[i]:
                     player.shuffle_deck(hand=True)
-                     # TODO: add logic for multiplayer games
-                     # to make first mulligan free CR103.5c
-                    hand_size[i] -= 1
+                    # CR103.5c In a multiplayer game and in any Brawl game,
+                    # the first mulligan a player takes doesn’t count
+                    # toward the number of cards that player will put
+                    # on the bottom of their library or
+                    # the number of mulligans that player may take.
+                    # Subsequent mulligans are counted toward these numbers as normal.
+                    if not self.free_mulligan or not first_hand[i]:
+                        hand_size[i] -= 1
+                    first_hand[i] = False
 
             # TODO: CR103.6. Some cards allow a player to take actions with them
             # from his or her opening hand.

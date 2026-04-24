@@ -1,3 +1,6 @@
+from utils import *
+from .player import Player
+
 class CardType:
     pass
 
@@ -28,7 +31,3 @@ class SuperType:
 
 class Legendary(SuperType):
     pass
-
-class Permanent:
-    player_owner = None
-    player_controller = None
