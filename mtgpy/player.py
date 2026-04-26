@@ -9,7 +9,8 @@ class Player:
     """An in-game instance of a Player.
     """
     
-    pass
+    _life : int
+    
     def __init__(
             self,
             game : Game,
