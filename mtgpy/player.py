@@ -1,9 +1,11 @@
 from .card import Card
-from .utils import Mana
+from .mana import Mana
 from .game import Game
+from .types import *
 
 from random import shuffle
 from typing import Callable
+from __future__ import annotations
 
 class Player:
     """An in-game instance of a Player.

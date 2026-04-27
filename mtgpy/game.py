@@ -1,6 +1,5 @@
 from .player import Player
 from .interface import Interface
-from .ability import Ability
 from random import choice
 from enum import Enum
 from .format import *

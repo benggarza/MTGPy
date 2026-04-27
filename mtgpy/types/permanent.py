@@ -1,7 +1,8 @@
 from .cardtype import *
 from ..player import Player
 from ..card import Card
-from .object import GameObject
+from .gameobject import GameObject
+from .ability import Ability
 from __future__ import annotations
 
 # CR110.1. A permanent is a card or token on the battlefield.

@@ -1,4 +1,5 @@
 from .permanent import Permanent
+from .ability import Ability
 from ..utils import *
 from .cardtype import CardType
 from ..player import Player

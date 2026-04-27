@@ -1,4 +1,5 @@
 from .cardtype import *
+from .ability import Ability
 from ..player import Player
 from ..card import Card
 from __future__ import annotations
@@ -23,6 +24,7 @@ class GameObject:
     _life_modifier : int | None
     _owner : Player | None
     _controller : Player | None
+    _card : Card | None
 
     # CR109.3. An object’s characteristics are
     # name, mana cost, color, color indicator, card type,
@@ -48,8 +50,10 @@ class GameObject:
                  defense : int | None = None,
                  hand_modifier : int | None = None,
                  life_modifier : int | None = None,
+                 # non-characteristics
                  owner : Player | None = None,
-                 controller : Player | None = None
+                 controller : Player | None = None,
+                 card : Card | None = None
                  ):
         self.name = name
         self.mana_cost = mana_cost
@@ -72,6 +76,8 @@ class GameObject:
         # Objects that are neither on the stack nor on the battlefield aren’t controlled by any player.
         # See rule 108.4. 
         self.controller = controller
+
+        self.card = card
 
     @property
     def name(self):
@@ -269,3 +275,11 @@ class GameObject:
         
         self._controller = c
 
+    @property
+    def card(self):
+        return self._card
+    
+    @card.setter
+    def card(self, c):
+        if not isinstance(c, Card) and c is not None:
+            raise ValueError("card must be a Card")
