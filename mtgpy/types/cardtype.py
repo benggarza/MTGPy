@@ -1,5 +1,5 @@
 from utils import *
-from .player import Player
+from ..player import Player
 from enum import Enum
 
 class CardType(Enum):
