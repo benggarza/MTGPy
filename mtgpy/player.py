@@ -1,4 +1,4 @@
-from .card import Card
+from .types.card import Card
 from .mana import Mana
 from .game import Game
 from .types import *

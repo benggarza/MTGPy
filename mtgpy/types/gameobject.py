@@ -1,7 +1,7 @@
 from .cardtype import *
 from .ability import Ability
 from ..player import Player
-from ..card import Card
+from .card import Card
 from __future__ import annotations
 
 # CR109.1. An object is an ability on the stack, a card, a copy of a card, a token, a spell, a permanent, or an emblem.
@@ -59,6 +59,9 @@ class GameObject:
         self.mana_cost = mana_cost
         self.color = color
         self.color_indicator = color_indicator
+        # CR204.2. An object with a color indicator is each color denoted by that color indicator.
+        if self.color is None:
+            self.color = color_indicator # TODO: should the card file enforce this?
         self.card_type = card_type
         self.subtype = subtype
         self.supertype = supertype

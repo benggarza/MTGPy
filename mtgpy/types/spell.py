@@ -1,7 +1,7 @@
 from .gameobject import GameObject
 from .cardtype import *
 from .ability import Ability
-from ..card import Card
+from .card import Card
 
 # CR112.1. A spell is a card on the stack.
 # As the first step of being cast (see rule 601, “Casting Spells”),

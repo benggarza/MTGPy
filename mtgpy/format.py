@@ -1,4 +1,4 @@
-from .card import Card
+from .types.card import Card
 
 class Format:
     name = ""

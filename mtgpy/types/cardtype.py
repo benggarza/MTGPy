@@ -2,6 +2,12 @@ from utils import *
 from ..player import Player
 from enum import Enum
 
+# CR205.2. Card Types
+
+# CR205.2a The card types are
+# artifact, battle, conspiracy, creature, dungeon, enchantment,
+# instant, kindred, land, phenomenon, plane, planeswalker, scheme,
+# sorcery, and vanguard. See section 3, “Card Types.”
 class CardType(Enum):
     INSTANT = "Instant"
     SORCERY = "Sorcery"
@@ -12,6 +18,12 @@ class CardType(Enum):
     ENCHANTMENT = "Enchantment"
     ARTIFACT = "Artifact"
     KINDRED = "Kindred"
+    CONSPIRACY = "Conspiracy"
+    DUNGEON = "Dungeon"
+    PHENOMENON = "Phenomenon"
+    PLANE = "Plane"
+    SCHEME = "Scheme"
+    VANGUARD = "Vanguard"
 
 # CR110.4. There are six permanent types:
 # artifact, battle, creature, enchantment, land, and planeswalker.

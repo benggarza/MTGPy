@@ -1,6 +1,6 @@
 from .cardtype import *
 from ..player import Player
-from ..card import Card
+from .card import Card
 from .gameobject import GameObject
 from .ability import Ability
 from __future__ import annotations
