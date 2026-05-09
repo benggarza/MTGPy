@@ -1,7 +1,8 @@
 from .gameobject  import GameObject
 from ..player import Player
 from ..utils import Symbol, Color
-from .cardtype import CardType
+from .cardtype import CardType, PERMANENT_TYPES
+from .permanent import Permanent
 
 class Card(GameObject):
     _mana_value : int
@@ -16,9 +17,9 @@ class Card(GameObject):
                  name : str = None,
                  mana_cost : list[Symbol] | None = None,
                  color_indicator : set[Color] = set(),
-                 card_type : CardType = None,
-                 subtype = None,
-                 supertype = None,
+                 card_type : list[CardType] = None,
+                 subtype : list = None,
+                 supertype : list = None,
                  rules_text : str | None = None,
                  power : int | None = None,
                  toughness : int | None = None,
@@ -88,3 +89,30 @@ class Card(GameObject):
         if not isinstance(mv, int):
             raise ValueError("mana_value can only be an int")
         self._mana_value = mv
+
+    # TODO: handle DFC and dual-sided cards
+    def get_permanent(self, **kwargs):
+        if not all(t in PERMANENT_TYPES for t in self.card_type):
+            return None
+        p_args = {
+            'name': self.name,
+            'mana_cost': self.mana_cost,
+            'color': self.color,
+            'color_indicator': self.color_indicator,
+            'card_type': self.card_type,
+            'subtype': self.subtype,
+            'supertype': self.supertype,
+            'rules_text': self.rules_text,
+            'abilities': self.abilities,
+            'power': self.power,
+            'toughness': self.toughness,
+            'loyalty': self.loyalty,
+            'defense': self.defense,
+            'hand_modifier': self.hand_modifier,
+            'life_modifier': self.life_modifier,
+            'owner': self.owner,
+            'controller': self.controller
+        }
+        p_args.update(kwargs)
+        p = Permanent(**p_args)
+        return p

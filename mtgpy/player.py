@@ -1,6 +1,7 @@
 from .types.card import Card
 from .mana import Mana
 from .game import Game
+from .event import Event
 from .types import *
 
 from random import shuffle
@@ -20,6 +21,8 @@ class Player:
             library : list[Card],
             sideboard : list[Card]
         ):
+        self.game = game
+
         self.life = starting_life
 
         self.library : list[Card] = library
@@ -134,3 +137,20 @@ class Player:
         """Choose attacking creatures and the player"""
         # TODO: CR
         return []
+
+
+    # CR116.2a Playing a land is a special action.
+    # To play a land, a player puts that land onto the battlefield from the zone it was in
+    # (usually that player’s hand).
+    # By default, a player can take this action only once during each of their turns.
+    # A player can take this action any time they have priority and
+    # the stack is empty during a main phase of their turn. See rule 305, “Lands.”
+    def _play_land(self, land : Card):
+        if not self.can_play_land():
+            print("You cannot play a land.")
+            return None
+        if not isinstance(land, Card) or Card not in land.card_type:
+            print("land must be a Card with the Land type.")
+        land.zone.drop(land)
+        self.game.add(land.get_permanent())
+        self.game.add_event(Event("land entered"))

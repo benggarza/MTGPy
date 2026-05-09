@@ -30,10 +30,18 @@ class CardType(Enum):
 # Instant and sorcery cards can’t enter the battlefield and thus can’t be permanents.
 # Some kindred cards can enter the battlefield and some can’t,
 # depending on their other card types. See section 3, “Card Types.”
-class PermanentType(Enum):
-    CREATURE = CardType.CREATURE
-    LAND = CardType.LAND
-    PLANESWALKER = CardType.PLANESWALKER
-    BATTLE = CardType.BATTLE
-    ENCHANTMENT = CardType.ENCHANTMENT
-    ARTIFACT = CardType.ARTIFACT
+PERMANENT_TYPES = set([
+    CardType.CREATURE,
+    CardType.Land,
+    CardType.PLANESWALKER,
+    CardType.BATTLE,
+    CardType.ENCHANTMENT,
+    CardType.ARTIFACT
+])
+# class PermanentType(Enum):
+#     CREATURE = CardType.CREATURE
+#     LAND = CardType.LAND
+#     PLANESWALKER = CardType.PLANESWALKER
+#     BATTLE = CardType.BATTLE
+#     ENCHANTMENT = CardType.ENCHANTMENT
+#     ARTIFACT = CardType.ARTIFACT

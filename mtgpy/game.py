@@ -1,5 +1,6 @@
 from .player import Player
 from .interface import Interface
+from .event import Event
 from random import choice
 from enum import Enum
 from .format import *
@@ -150,6 +151,20 @@ class Game:
             self.triggered_abilities[p] = {}
             for s in STEPS[p]:
                 self.triggered_abilities[p][s] = set()
+
+        # TODO: what data structure makes scanning the cache the quickest?
+        # some sort of hashed DS would allow game objects to "search" the cache for 
+        # a particular event category and then iterate over those for matching events.
+        # e.g. Orcish Bowmasters would search for a "card drawn" event category,
+        # and Marionette Master would search for a "died" event category.
+        # Only issue is categories are heirarchal: creatures dying is a subcat
+        # of creatures leaving, and that is a subcat of permanents leaving.
+        # could enum categories as integers with bit overlap, 
+        # so creatures dying would include a "permanent" and a "leaving" bit
+        # as well as a "creature" bit
+        # dying would be "left battlefield" and "entered gy"
+        # creature would be "creature" and "permanent"
+        self.event_cache = {}
     
     @property
     def active_player(self):
@@ -808,3 +823,8 @@ class Game:
 
         return damage_assignments
 
+    # TODO: the game manages an event cache that gets filled every time events occur.
+    # these events get scanned over at SBA by gameobjects to trigger abilities,
+    # and is cleared every time SBA are checked.
+    def add_event(self, event : Event):
+        pass
